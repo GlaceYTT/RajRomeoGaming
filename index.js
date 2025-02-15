@@ -1,6 +1,6 @@
 require("dotenv").config();
 const { Client, GatewayIntentBits, EmbedBuilder , ActivityType } = require("discord.js");
-
+const path = require('path');
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
