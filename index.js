@@ -10,9 +10,9 @@ const client = new Client({
     ]
 });
 
-const MEDIA_CHANNEL_ID = "1341006457369399346"; 
-const CHAT_CHANNEL_ID = "1341006524843032616";  
-const MEME_CHANNEL_ID = "1326198590086971492";   
+const MEDIA_CHANNEL_ID = "1004292945282879540"; 
+const CHAT_CHANNEL_ID = "1004292944938938459";  
+const MEME_CHANNEL_ID = "1340192779271143424";   
 
 const mediaUsage = new Map();
 const sayCooldowns = new Map(); // ✅ Cooldown tracker for !rrgsay
