@@ -1,6 +1,7 @@
 require("dotenv").config();
-const { Client, GatewayIntentBits, EmbedBuilder , ActivityType } = require("discord.js");
+const { Client, GatewayIntentBits, ActivityType } = require("discord.js");
 const path = require('path');
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -9,64 +10,146 @@ const client = new Client({
     ]
 });
 
+const MEDIA_CHANNEL_ID = "1341006457369399346"; 
+const CHAT_CHANNEL_ID = "1341006524843032616";  
+const MEME_CHANNEL_ID = "1326198590086971492";   
 
-const ALLOWED_CHANNEL_ID = "1340192779271143424";
-
-
-const userCooldowns = new Map();
+const mediaUsage = new Map();
+const sayCooldowns = new Map(); // ✅ Cooldown tracker for !rrgsay
 
 client.once("ready", () => {
     console.log(`✅ Logged in as ${client.user.tag}`);
-        client.user.setActivity("Genshin Impact", {
-            type: ActivityType.Streaming,
-            url: "https://www.twitch.tv/rajromeogaming" 
-        });
-
+    client.user.setActivity("Genshin Impact", {
+        type: ActivityType.Streaming,
+        url: "https://www.twitch.tv/rajromeogaming"
+    });
 });
 
 client.on("messageCreate", async (message) => {
-   
     if (message.author.bot) return;
 
-   
-    if (message.channel.id !== ALLOWED_CHANNEL_ID) return;
-
-    
-    const hasAttachment = message.attachments.size > 0;
-    const isYouTubeLink = /(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/\S+/gi.test(message.content);
-
-
-    if (hasAttachment || isYouTubeLink) return;
-
-  
-    await message.delete().catch(console.error);
-
-   
-    const lastWarnTime = userCooldowns.get(message.author.id);
+    const channelId = message.channel.id;
+    const userId = message.author.id;
     const currentTime = Date.now();
+    let userData = mediaUsage.get(userId) || { 
+        attachmentCount: 0, 
+        nonAttachmentCount: 0, 
+        lastMessageTime: 0,
+        lastAttachmentTime: 0 
+    };
 
-    if (lastWarnTime && currentTime - lastWarnTime < 10000) return;
+    const hasAttachment = message.attachments.size > 0;
 
-   
-    userCooldowns.set(message.author.id, currentTime);
+    // ✅ Command: rrgsay <message> (10s cooldown)
+    if (message.content.startsWith("rrgsay ")) {
+        const sayMessage = message.content.slice(6).trim(); 
+        const lastUsed = sayCooldowns.get(userId) || 0;
+        const remainingCooldown = Math.max(0, 10000 - (currentTime - lastUsed));
 
-   
-    const warning = await message.channel.send({
-        content: `${message.author}, only **attachments** and **YouTube links** are allowed here! 🚫`,
-    });
+        // Check cooldown
+        if (remainingCooldown > 0) {
+            await message.delete().catch(console.error);
+            return message.channel.send({
+                content: `${message.author}, please wait **${Math.ceil(remainingCooldown / 1000)} seconds** before using \`rrgsay\` again! ⏳`
+            }).then(msg => setTimeout(() => msg.delete().catch(() => {}), 5000));
+        }
 
-    setTimeout(() => warning.delete().catch(() => {}), 5000);
+        // Prevent role mentions, channel mentions, and links
+        if (
+            sayMessage.includes("@") || 
+            sayMessage.includes("<#") || 
+            /https?:\/\/|discord\.gg/i.test(sayMessage)
+        ) {
+            await message.delete().catch(console.error);
+            return message.channel.send({
+                content: `${message.author}, you cannot mention roles, channels, or post links in the \`rrgsay\` command! 🚫`
+            }).then(msg => setTimeout(() => msg.delete().catch(() => {}), 5000));
+        }
+
+        if (sayMessage.length > 0) {
+            await message.delete().catch(console.error);
+            sayCooldowns.set(userId, currentTime); // ✅ Start 10s cooldown
+            return message.channel.send(sayMessage);
+        }
+    }
+
+    // ✅ Media Channel Logic
+    if (channelId === MEDIA_CHANNEL_ID) {
+        let remainingCooldown = 0;
+
+        if (hasAttachment) {
+            remainingCooldown = Math.max(0, 10000 - (currentTime - userData.lastAttachmentTime));
+
+            if (remainingCooldown > 0) {
+                await message.delete().catch(console.error);
+                return message.channel.send({
+                    content: `${message.author}, please wait **${Math.ceil(remainingCooldown / 1000)} seconds** before uploading another media file! ⏳`
+                }).then(msg => setTimeout(() => msg.delete().catch(() => {}), 5000));
+            }
+        }
+
+        if (!hasAttachment) {
+            remainingCooldown = Math.max(0, 20000 - (currentTime - userData.lastMessageTime));
+
+            if (remainingCooldown > 0) {
+                await message.delete().catch(console.error);
+                return message.channel.send({
+                    content: `${message.author}, please wait **${Math.ceil(remainingCooldown / 1000)} seconds** before sending another message! ⏳`
+                }).then(msg => setTimeout(() => msg.delete().catch(() => {}), 5000));
+            }
+        }
+
+        if (hasAttachment) {
+            userData.attachmentCount++;
+            userData.nonAttachmentCount = 0; 
+            userData.lastAttachmentTime = currentTime; 
+        } else {
+            userData.nonAttachmentCount++;
+        }
+
+        userData.lastMessageTime = currentTime;
+
+        if (userData.nonAttachmentCount > 1 || userData.attachmentCount > 2) {
+            await message.delete().catch(console.error);
+            await message.channel.send({
+                content: `${message.author}, this is a **media-only** channel! Please continue chatting in <#${CHAT_CHANNEL_ID}> 🚫`
+            }).then(msg => setTimeout(() => msg.delete().catch(() => {}), 5000));
+
+            mediaUsage.set(userId, { 
+                attachmentCount: 0, 
+                nonAttachmentCount: 0, 
+                lastMessageTime: currentTime,
+                lastAttachmentTime: userData.lastAttachmentTime
+            });
+        } else {
+            mediaUsage.set(userId, userData);
+        }
+    }
+
+    if (channelId === MEME_CHANNEL_ID) {
+        const isYouTubeLink = /(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/\S+/gi.test(message.content);
+
+        if (!hasAttachment && !isYouTubeLink) {
+            await message.delete().catch(console.error);
+            return message.channel.send({
+                content: `${message.author}, only **attachments** and **YouTube links** are allowed here! 🚫`
+            }).then(msg => setTimeout(() => msg.delete().catch(() => {}), 5000));
+        }
+    }
 });
 
-
+// ✅ Express Server for Web Hosting
 const express = require("express");
 const app = express();
 const port = 3000;
+
 app.get('/', (req, res) => {
     const imagePath = path.join(__dirname, 'index.html');
     res.sendFile(imagePath);
 });
+
 app.listen(port, () => {
     console.log(`🔗 Listening to GlaceYT : http://localhost:${port}`);
 });
+
 client.login(process.env.TOKEN);
